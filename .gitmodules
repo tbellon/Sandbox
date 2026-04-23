@@ -1,0 +1,3 @@
+[submodule ".claude/skills/entrepreneur"]
+	path = .claude/skills/entrepreneur
+	url = https://github.com/mfwarren/entrepreneur-claude-skills.git
