@@ -1,0 +1,17 @@
+# gitleaks configuration (v8.25+ schema: the plural [[allowlists]] array).
+# Keep the default ruleset and add exceptions on top of it.
+[extend]
+useDefault = true
+
+# Only VERIFIED false positives belong here. A real secret is rotated, never
+# allowlisted. Match by path, and give every entry a description (the reason).
+#
+# [[allowlists]]
+# description = "why this path is a false positive (what the match really is)"
+# paths = [
+#   '''^path/to/generated/or/vendored/file\.ext$''',
+# ]
+#
+# Single findings: add the finding's fingerprint to a .gitleaksignore file.
+# Existing history that has been triaged: commit a baseline and pass it with
+# --baseline-path so only new leaks are reported.

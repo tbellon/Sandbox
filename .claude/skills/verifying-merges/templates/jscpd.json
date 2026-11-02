@@ -1,0 +1,12 @@
+{
+  "minTokens": 70,
+  "gitignore": true,
+  "absolute": false,
+  "ignore": [
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/.verify-out/**",
+    "**/Library/**",
+    "**/Temp/**"
+  ]
+}
