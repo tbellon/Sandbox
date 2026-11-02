@@ -1,0 +1,18 @@
+{
+  "minTokens": 70,
+  "gitignore": true,
+  "absolute": false,
+  "path": ["."],
+  "pattern": "**/*.{js,jsx,ts,tsx,mjs,py}",
+  "ignore": [
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/.verify-out/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/.next*/**",
+    "**/out/**",
+    "**/coverage/**",
+    "**/.planning/**"
+  ]
+}

@@ -1,0 +1,150 @@
+# Merge verification gate (verifying-merges skill).
+#
+# Runs scripts/verify.sh on pull_request, merge_group and push to main.
+# IMPORTANT: this workflow only blocks merging if the job named `verify` is
+# marked as a REQUIRED status check in branch protection (or a ruleset) for the
+# default branch. With a merge queue, require the same check on merge_group
+# runs too. A workflow that is not a required check reports but never blocks.
+#
+# Security notes: pull_request (never pull_request_target), read-only token, no
+# secrets, event values reach the shell only through env: variables, npm
+# install scripts are disabled, release binaries are checksum-verified, and the
+# only third-party code is first-party actions pinned to full commit SHAs.
+name: Merge verification
+
+on:
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+  push:
+    # install: set to the repository's default branch
+    branches: [claude/add-startup-skill-plugin-EpVap]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: merge-verification-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out (full history, no persisted credentials)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node (for the pinned npx tools)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Install gitleaks and osv-scanner (pinned, checksum-verified)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+          OSV_VERSION: "2.7.0"
+          OSV_SHA256: "160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b"
+        run: |
+          set -euo pipefail
+          bindir="$RUNNER_TEMP/verify-bin"
+          mkdir -p "$bindir"
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz -C "$bindir" gitleaks
+          curl -fsSL -o "$bindir/osv-scanner" "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SHA256}  $bindir/osv-scanner" | sha256sum -c -
+          chmod +x "$bindir/osv-scanner"
+          echo "$bindir" >> "$GITHUB_PATH"
+
+      # knip needs the project's dependencies installed. Install scripts of pull
+      # request code must not run. Adapt for pnpm or yarn. Each knip root is
+      # installed separately: one npm ci per tracked package-lock.json directory.
+      # Inert without a lockfile.
+      - name: Install npm dependencies (no install scripts)
+        if: ${{ hashFiles('**/package-lock.json') != '' }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' f; do
+            case "$f" in
+              node_modules/*|*/node_modules/*) continue ;;
+              package-lock.json) dir=. ;;
+              */package-lock.json) dir=${f%/package-lock.json} ;;
+              *) continue ;;
+            esac
+            (cd "$dir" && npm ci --ignore-scripts </dev/null)
+          done < <(git ls-files -z)
+
+      - name: Resolve what to verify
+        id: range
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          MG_BASE: ${{ github.event.merge_group.base_sha }}
+          MG_HEAD: ${{ github.event.merge_group.head_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mode=range
+          base=""
+          head=""
+          case "$EVENT_NAME" in
+            pull_request)
+              base="$PR_BASE"
+              head="$SHA"
+              ;;
+            merge_group)
+              base="$MG_BASE"
+              head="$MG_HEAD"
+              ;;
+            push)
+              head="$SHA"
+              if [ -n "${PUSH_BEFORE:-}" ] \
+                 && ! printf '%s' "$PUSH_BEFORE" | grep -Eq '^0+$' \
+                 && git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+                base="$PUSH_BEFORE"
+              else
+                mode=full
+              fi
+              ;;
+            *)
+              echo "unsupported event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+          {
+            echo "mode=$mode"
+            echo "base=$base"
+            echo "head=$head"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify
+        env:
+          VERIFY_OUT: .verify-out
+          MODE: ${{ steps.range.outputs.mode }}
+          BASE_SHA: ${{ steps.range.outputs.base }}
+          HEAD_SHA: ${{ steps.range.outputs.head }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = full ]; then
+            bash .claude/skills/verifying-merges/scripts/verify.sh --full
+          else
+            bash .claude/skills/verifying-merges/scripts/verify.sh --range "$BASE_SHA" "$HEAD_SHA"
+          fi
+
+      - name: Upload evidence (redacted reports and logs)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verify-evidence
+          path: .verify-out
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14

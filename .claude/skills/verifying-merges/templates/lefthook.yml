@@ -1,0 +1,19 @@
+# lefthook v2 configuration for the verifying-merges skill.
+# Install the hooks once per clone with `lefthook install` (not automated).
+# One job per hook, so no `parallel` key is needed.
+pre-commit:
+  jobs:
+    - name: verify
+      run: bash .claude/skills/verifying-merges/scripts/verify.sh --staged
+      fail_text: >-
+        Staged secret check failed. Read the CHECK gitleaks line above. A real
+        credential must be rotated before it is removed; only a proven false
+        positive may be allowlisted (see .claude/skills/verifying-merges/SKILL.md).
+
+pre-push:
+  jobs:
+    - name: verify
+      run: bash .claude/skills/verifying-merges/scripts/verify.sh --range auto HEAD
+      fail_text: >-
+        Merge verification failed. Read the CHECK lines above (gitleaks, knip,
+        jscpd, osv-scanner); evidence files are in .verify-out/.

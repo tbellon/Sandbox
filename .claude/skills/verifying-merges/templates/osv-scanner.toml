@@ -1,0 +1,12 @@
+# osv-scanner exceptions. osv-scanner reads this file from the scanned directory
+# (a root file does not cover lockfiles in subdirectories: put one beside each).
+# Rule: no entry without a reason AND an expiry (ignoreUntil). An exception
+# missing either one is a defect. Prefer upgrading to the fixed version.
+#
+# `verify.sh --write-baseline` owns the block between the `# BEGIN verify-baseline`
+# and `# END verify-baseline` marker lines; entries outside that block are yours.
+#
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# reason = "not reachable: the vulnerable function is never called; tracked in issue #123"
+# ignoreUntil = 2027-01-31
